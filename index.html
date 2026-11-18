@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AERO-SIM — WebGL2 Navier-Stokes Wind Tunnel</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-code">AERO-SIM</span>
+          <span class="brand-sub">WebGL2 GPGPU Navier-Stokes Wind Tunnel</span>
+        </div>
+
+        <nav class="vis-tabs" aria-label="Visualization mode">
+          <button class="vis-btn active" data-vis="0">Smoke Dye</button>
+          <button class="vis-btn" data-vis="1">Vorticity</button>
+          <button class="vis-btn" data-vis="2">Velocity</button>
+          <button class="vis-btn" data-vis="3">Pressure</button>
+          <button class="vis-btn" data-vis="4">Streamlines</button>
+        </nav>
+
+        <div class="transport">
+          <button id="btn-play" class="btn primary">Pause</button>
+          <button id="btn-step" class="btn">Step</button>
+          <button id="btn-reset" class="btn">Reset Flow</button>
+          <button id="btn-clear-walls" class="btn">Clear Walls</button>
+        </div>
+      </header>
+
+      <div id="error-banner" class="error-banner hidden" role="alert">
+        <strong>WebGL2 Solver Unavailable:</strong>
+        <span id="error-message"></span>
+      </div>
+
+      <main class="workspace">
+        <section class="viewport-pane">
+          <div class="canvas-frame">
+            <canvas id="cfd-canvas" width="896" height="448"></canvas>
+            <div class="viewport-meta">
+              <span id="grid-info">448×224 RGBA16F · MacCormack + Jacobi</span>
+              <span id="fps-readout">FPS: --</span>
+            </div>
+          </div>
+          <div class="legend-bar">
+            <span id="vis-legend-label">Smoke Rake &amp; Dye Transport</span>
+            <div class="legend-scale" id="legend-scale"></div>
+          </div>
+        </section>
+
+        <aside class="inspector">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Aerodynamic Telemetry</h2>
+              <span class="mono-tag" id="preset-tag">NACA 2412</span>
+            </div>
+
+            <div class="telem-grid">
+              <div class="telem-cell">
+                <span class="telem-label">Lift (C<sub>L</sub>)</span>
+                <span class="telem-val cyan" id="val-cl">0.000</span>
+              </div>
+              <div class="telem-cell">
+                <span class="telem-label">Drag (C<sub>D</sub>)</span>
+                <span class="telem-val amber" id="val-cd">0.000</span>
+              </div>
+              <div class="telem-cell">
+                <span class="telem-label">L / D Ratio</span>
+                <span class="telem-val" id="val-ld">0.00</span>
+              </div>
+              <div class="telem-cell">
+                <span class="telem-label">Reynolds (Re)</span>
+                <span class="telem-val" id="val-re">0.0e0</span>
+              </div>
+            </div>
+
+            <div class="sparkline-wrap">
+              <div class="sparkline-head">
+                <span>Force History</span>
+                <span class="spark-legend">
+                  <i class="swatch cyan"></i>C<sub>L</sub>
+                  <i class="swatch amber"></i>C<sub>D</sub>
+                </span>
+              </div>
+              <canvas id="sparkline-canvas" width="300" height="84"></canvas>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Tunnel &amp; Model</h2>
+            </div>
+
+            <label class="field">
+              <span>Obstacle Preset</span>
+              <select id="preset-select">
+                <option value="naca2412">NACA 2412 (Cambered)</option>
+                <option value="naca0012">NACA 0012 (Symmetric)</option>
+                <option value="cylinder">Cylinder (Vortex Street)</option>
+                <option value="wedge">Bluff Car / Wedge</option>
+                <option value="venturi">Double Slit / Venturi</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <div class="field-row">
+                <span>Angle of Attack (AoA)</span>
+                <span class="mono-val" id="aoa-val">+8°</span>
+              </div>
+              <input id="aoa-slider" type="range" min="-25" max="25" step="1" value="8" />
+            </label>
+
+            <label class="field">
+              <div class="field-row">
+                <span>Tunnel Velocity (U<sub>∞</sub>)</span>
+                <span class="mono-val" id="speed-val">15.6 m/s</span>
+              </div>
+              <input id="speed-slider" type="range" min="40" max="220" step="2" value="125" />
+            </label>
+
+            <label class="field">
+              <div class="field-row">
+                <span>Vorticity Confinement</span>
+                <span class="mono-val" id="curl-val">14.0</span>
+              </div>
+              <input id="curl-slider" type="range" min="0" max="36" step="0.5" value="14" />
+            </label>
+
+            <label class="field">
+              <div class="field-row">
+                <span>Jacobi Iterations</span>
+                <span class="mono-val" id="jacobi-val">36</span>
+              </div>
+              <input id="jacobi-slider" type="range" min="10" max="80" step="2" value="36" />
+            </label>
+
+            <label class="field">
+              <div class="field-row">
+                <span>Kinematic Viscosity</span>
+                <span class="mono-val" id="visc-val">0.0005</span>
+              </div>
+              <input id="visc-slider" type="range" min="0" max="0.012" step="0.0005" value="0.0005" />
+            </label>
+
+            <div class="check-row">
+              <label class="check-item">
+                <input id="noslip-toggle" type="checkbox" checked />
+                <span>No-Slip Walls</span>
+              </label>
+              <label class="check-item">
+                <input id="rakes-toggle" type="checkbox" checked />
+                <span>Smoke Rakes</span>
+              </label>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Interactive Brush</h2>
+            </div>
+
+            <div class="tool-group" role="group" aria-label="Canvas interaction tool">
+              <button class="tool-btn active" data-tool="dye">Dye / Jet</button>
+              <button class="tool-btn" data-tool="draw">Draw Wall</button>
+              <button class="tool-btn" data-tool="erase">Erase Wall</button>
+            </div>
+
+            <label class="field">
+              <div class="field-row">
+                <span>Brush Radius</span>
+                <span class="mono-val" id="brush-val">0.032</span>
+              </div>
+              <input id="brush-slider" type="range" min="0.012" max="0.08" step="0.004" value="0.032" />
+            </label>
+
+            <p class="hint">Drag across the tunnel to paint solid walls, carve slits, or inject high-speed tracer jets.</p>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
